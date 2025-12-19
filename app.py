@@ -126,4 +126,30 @@ if st.session_state.donnees_recherche is not None:
     # Construction de la carte à partir de la mémoire
     m = folium.Map(location=[data['lat'], data['lon']], zoom_start=13, tiles="CartoDB positron")
     folium.Marker([data['lat'], data['lon']], popup="Domicile", icon=folium.Icon(color="black", icon="home")).add_to(m)
-    folium.Circle([data['lat'], data['lon']], radius=data['rayon']*1000,
+    folium.Circle([data['lat'], data['lon']], radius=data['rayon']*1000, color="#3498db", fill=True, fill_opacity=0.08).add_to(m)
+
+    for idx, c in enumerate(data['liste']):
+        if idx < 300:
+            color = "#9b59b6" if c['Type'] == "Micro" else "#ff5e57"
+            popup_html = f"""
+            <div style="font-family:sans-serif; width:180px;">
+                <h5 style="margin:0; color:{color}">{c['Nom']}</h5>
+                <div style="font-size:12px; margin:5px 0;">📍 <b>{c['Distance']}m</b> | 🏃 {c['Pied_min']} min</div>
+                <a href="{c['Lien_Info']}" target="_blank" style="text-decoration:none; color:blue; font-size:12px;"> Voir Infos & Avis</a>
+            </div>
+            """
+            icon_html = f"""<div style="background:{color};color:white;border-radius:50%;width:24px;height:24px;text-align:center;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);">{idx+1}</div>"""
+            folium.Marker([c['lat'], c['lon']], popup=folium.Popup(popup_html, max_width=250), icon=folium.DivIcon(html=icon_html)).add_to(m)
+
+    st.subheader("🗺️ Carte Interactive")
+    st_folium(m, width=700, height=500)
+
+    # Bouton de téléchargement stable
+    map_html = io.BytesIO()
+    m.save(map_html, close_file=False)
+    st.download_button(
+        label="💾 Télécharger la carte",
+        data=map_html.getvalue(),
+        file_name="Carte_Creches.html",
+        mime="text/html"
+    )
