@@ -3,10 +3,23 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from math import radians, cos, sin, asin, sqrt
-import pandas as pd
+import io
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Recherche Crèche", page_icon="👶")
+st.set_page_config(page_title="Recherche Crèche", page_icon="👶", layout="centered")
+
+# --- CSS (Design propre) ---
+st.markdown("""
+    <style>
+    div.stButton > button {
+        width: 100%;
+        background-color: #27ae60;
+        color: white;
+        font-weight: bold;
+        padding: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- FONCTIONS ---
 def get_gps(adresse):
@@ -42,20 +55,22 @@ def get_creches_secure(lat, lon, rayon_metres):
     return []
 
 # --- INTERFACE ---
-st.title("👶 Moteur Crèche")
-st.markdown("Indiquez votre adresse pour générer une carte interactive avec temps de trajet.")
+st.title("👶 Moteur Crèche Pro")
+st.markdown("Entrez une adresse, la carte s'affichera directement ci-dessous.")
 
+# Formulaire
 col1, col2 = st.columns([3, 1])
 with col1:
     adresse = st.text_input("Adresse", placeholder="Ex: 10 rue de la Paix, Paris")
 with col2:
     rayon = st.number_input("Rayon (km)", min_value=1, max_value=100, value=5)
 
-if st.button("LANCER LA RECHERCHE", type="primary"):
+# Bouton Action
+if st.button("LANCER LA RECHERCHE"):
     if not adresse:
-        st.error("L'adresse est vide.")
+        st.error("❌ Veuillez entrer une adresse.")
     else:
-        with st.spinner("Analyse en cours..."):
+        with st.spinner("🔎 Analyse de la zone en cours..."):
             lat_user, lon_user, adresse_legible = get_gps(adresse)
             
             if lat_user:
@@ -86,34 +101,42 @@ if st.button("LANCER LA RECHERCHE", type="primary"):
                         })
                 
                 liste_finale = sorted(liste_finale, key=lambda x: x['Distance'])
-                st.success(f"{len(liste_finale)} crèches trouvées !")
+                st.success(f"✅ {len(liste_finale)} crèches trouvées autour de {adresse_legible}")
 
-                # CARTE
-                m = folium.Map(location=[lat_user, lon_user], zoom_start=12 if rayon > 5 else 14, tiles="CartoDB positron")
-                folium.Marker([lat_user, lon_user], popup="Maison", icon=folium.Icon(color="black", icon="home")).add_to(m)
+                # --- CRÉATION CARTE ---
+                m = folium.Map(location=[lat_user, lon_user], zoom_start=13, tiles="CartoDB positron")
+                folium.Marker([lat_user, lon_user], popup="Domicile", icon=folium.Icon(color="black", icon="home")).add_to(m)
                 folium.Circle([lat_user, lon_user], radius=rayon*1000, color="#3498db", fill=True, fill_opacity=0.08).add_to(m)
 
                 for idx, c in enumerate(liste_finale):
                     if idx < 300:
                         color = "#9b59b6" if c['Type'] == "Micro" else "#ff5e57"
                         popup_html = f"""
-                        <div style="font-family:sans-serif; width:200px;">
-                            <h4 style="margin:0; color:{color}">{c['Nom']}</h4>
-                            <div style="font-size:12px;">📍 <b>{c['Distance']}m</b> | 🏃 {c['Pied_min']} min</div>
-                            <a href="{c['Lien_Info']}" target="_blank">Infos</a>
+                        <div style="font-family:sans-serif; width:180px;">
+                            <h5 style="margin:0; color:{color}">{c['Nom']}</h5>
+                            <div style="font-size:12px; margin:5px 0;">📍 <b>{c['Distance']}m</b> | 🏃 {c['Pied_min']} min</div>
+                            <a href="{c['Lien_Info']}" target="_blank" style="text-decoration:none; color:blue; font-size:12px;"> Voir Infos & Avis</a>
                         </div>
                         """
                         icon_html = f"""<div style="background:{color};color:white;border-radius:50%;width:24px;height:24px;text-align:center;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);">{idx+1}</div>"""
                         folium.Marker([c['lat'], c['lon']], popup=folium.Popup(popup_html, max_width=250), icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-                # AFFICHAGE
-                st_folium(m, width=700, height=500)
+                # --- AFFICHAGE DIRECT SUR L'ÉCRAN ---
+                st.subheader("🗺️ Carte Interactive")
+                # C'est cette ligne magique qui affiche la carte directement
+                st_folium(m, width=700, height=500) 
+
+                # --- BOUTON DE SAUVEGARDE (OPTIONNEL & STABLE) ---
+                # On prépare le fichier en mémoire pour ne pas recharger la page brutalement
+                map_html = io.BytesIO()
+                m.save(map_html, close_file=False)
                 
-                # BOUTON TELECHARGEMENT CARTE
-                nom_fichier = "Ma_Carte.html"
-                m.save(nom_fichier)
-                with open(nom_fichier, "rb") as file:
-                    st.download_button(label="⬇️ TÉLÉCHARGER LA CARTE", data=file, file_name=nom_fichier, mime="text/html")
+                st.download_button(
+                    label="💾 Télécharger cette carte (fichier HTML)",
+                    data=map_html.getvalue(),
+                    file_name="Carte_Creches.html",
+                    mime="text/html"
+                )
 
             else:
-                st.error("Adresse introuvable.")
+                st.error("Adresse introuvable. Essayez d'être plus précis (ex: ajout du code postal).")
