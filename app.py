@@ -8,7 +8,12 @@ import io
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Recherche Crèche", page_icon="👶", layout="centered")
 
-# --- CSS (Design propre) ---
+# --- INITIALISATION DE LA MÉMOIRE (Session State) ---
+# C'est ici que la magie opère : on crée une case mémoire pour stocker la carte
+if 'donnees_recherche' not in st.session_state:
+    st.session_state.donnees_recherche = None
+
+# --- CSS ---
 st.markdown("""
     <style>
     div.stButton > button {
@@ -56,21 +61,20 @@ def get_creches_secure(lat, lon, rayon_metres):
 
 # --- INTERFACE ---
 st.title("👶 Moteur Crèche Pro")
-st.markdown("Entrez une adresse, la carte s'affichera directement ci-dessous.")
+st.markdown("La carte reste affichée ci-dessous après la recherche.")
 
-# Formulaire
 col1, col2 = st.columns([3, 1])
 with col1:
     adresse = st.text_input("Adresse", placeholder="Ex: 10 rue de la Paix, Paris")
 with col2:
     rayon = st.number_input("Rayon (km)", min_value=1, max_value=100, value=5)
 
-# Bouton Action
+# --- BOUTON DE RECHERCHE ---
 if st.button("LANCER LA RECHERCHE"):
     if not adresse:
         st.error("❌ Veuillez entrer une adresse.")
     else:
-        with st.spinner("🔎 Analyse de la zone en cours..."):
+        with st.spinner("🔎 Analyse et mémorisation..."):
             lat_user, lon_user, adresse_legible = get_gps(adresse)
             
             if lat_user:
@@ -101,42 +105,25 @@ if st.button("LANCER LA RECHERCHE"):
                         })
                 
                 liste_finale = sorted(liste_finale, key=lambda x: x['Distance'])
-                st.success(f"✅ {len(liste_finale)} crèches trouvées autour de {adresse_legible}")
-
-                # --- CRÉATION CARTE ---
-                m = folium.Map(location=[lat_user, lon_user], zoom_start=13, tiles="CartoDB positron")
-                folium.Marker([lat_user, lon_user], popup="Domicile", icon=folium.Icon(color="black", icon="home")).add_to(m)
-                folium.Circle([lat_user, lon_user], radius=rayon*1000, color="#3498db", fill=True, fill_opacity=0.08).add_to(m)
-
-                for idx, c in enumerate(liste_finale):
-                    if idx < 300:
-                        color = "#9b59b6" if c['Type'] == "Micro" else "#ff5e57"
-                        popup_html = f"""
-                        <div style="font-family:sans-serif; width:180px;">
-                            <h5 style="margin:0; color:{color}">{c['Nom']}</h5>
-                            <div style="font-size:12px; margin:5px 0;">📍 <b>{c['Distance']}m</b> | 🏃 {c['Pied_min']} min</div>
-                            <a href="{c['Lien_Info']}" target="_blank" style="text-decoration:none; color:blue; font-size:12px;"> Voir Infos & Avis</a>
-                        </div>
-                        """
-                        icon_html = f"""<div style="background:{color};color:white;border-radius:50%;width:24px;height:24px;text-align:center;font-weight:bold;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);">{idx+1}</div>"""
-                        folium.Marker([c['lat'], c['lon']], popup=folium.Popup(popup_html, max_width=250), icon=folium.DivIcon(html=icon_html)).add_to(m)
-
-                # --- AFFICHAGE DIRECT SUR L'ÉCRAN ---
-                st.subheader("🗺️ Carte Interactive")
-                # C'est cette ligne magique qui affiche la carte directement
-                st_folium(m, width=700, height=500) 
-
-                # --- BOUTON DE SAUVEGARDE (OPTIONNEL & STABLE) ---
-                # On prépare le fichier en mémoire pour ne pas recharger la page brutalement
-                map_html = io.BytesIO()
-                m.save(map_html, close_file=False)
                 
-                st.download_button(
-                    label="💾 Télécharger cette carte (fichier HTML)",
-                    data=map_html.getvalue(),
-                    file_name="Carte_Creches.html",
-                    mime="text/html"
-                )
-
+                # ON SAUVEGARDE TOUT DANS LA MÉMOIRE (SESSION STATE)
+                st.session_state.donnees_recherche = {
+                    "liste": liste_finale,
+                    "lat": lat_user,
+                    "lon": lon_user,
+                    "adresse": adresse_legible,
+                    "rayon": rayon
+                }
             else:
-                st.error("Adresse introuvable. Essayez d'être plus précis (ex: ajout du code postal).")
+                st.error("Adresse introuvable.")
+
+# --- AFFICHAGE (En dehors du bouton, pour que ça reste !) ---
+if st.session_state.donnees_recherche is not None:
+    data = st.session_state.donnees_recherche
+    
+    st.success(f"✅ {len(data['liste'])} crèches trouvées autour de {data['adresse']}")
+    
+    # Construction de la carte à partir de la mémoire
+    m = folium.Map(location=[data['lat'], data['lon']], zoom_start=13, tiles="CartoDB positron")
+    folium.Marker([data['lat'], data['lon']], popup="Domicile", icon=folium.Icon(color="black", icon="home")).add_to(m)
+    folium.Circle([data['lat'], data['lon']], radius=data['rayon']*1000,
